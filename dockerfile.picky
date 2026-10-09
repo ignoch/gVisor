@@ -1,0 +1,20 @@
+# picky — the Pi coding agent, sandboxed in gVisor.
+# Plain alpine (smallest viable base: alpine's nodejs must be >= 22.19 for pi;
+# alpine:3.20 ships 20.x which is too old, 3.22/3.23 ship 22.23/24.18).
+# Size: ~324 MB vs ~409 MB for node:24-alpine (measured 2026-10-09).
+FROM alpine:3.23
+ARG PI_VERSION=1.1.0
+RUN apk add --no-cache nodejs npm git bash
+RUN npm install --global "@earendil-works/pi-coding-agent@${PI_VERSION}"
+
+# uid/gid 1000 matches the picky-agent-home volume's file ownership (the
+# container runs as root and drops to this user in the entrypoint, because
+# single-file binds arrive root-mapped through Docker Desktop's virtiofs).
+RUN apk add --no-cache su-exec \
+ && addgroup -g 1000 pagent \
+ && adduser -D -u 1000 -G pagent pagent
+
+COPY picky-entrypoint.sh picky-run.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/picky-entrypoint.sh /usr/local/bin/picky-run.sh
+
+ENTRYPOINT ["/usr/local/bin/picky-entrypoint.sh"]

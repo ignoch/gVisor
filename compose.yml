@@ -44,7 +44,37 @@ services:
         read_only: true
     command:
       - /usr/local/bin/install-into-vm.sh
+  picky:
+    build:
+      context: .
+      dockerfile: dockerfile.picky
+    # gVisor sandbox (systrap) + Docker Desktop VM = defense in depth.
+    # The Desktop backend may regenerate /run/config/docker/daemon.json at any
+    # time, wiping the runtime registration; the depends_on wiring below
+    # re-applies it (fast, idempotent) before every picky launch.
+    runtime: runsc
+    init: true
+    stdin_open: true
+    tty: true
+    environment:
+      PI_CODING_AGENT_DIR: /state
+      PI_SKIP_VERSION_CHECK: "1"
+    depends_on:
+      fetch:
+        condition: service_completed_successfully
+      install-into-vm:
+        condition: service_completed_successfully
+    volumes:
+      - type: volume
+        source: picky-home
+        target: /state
+      - type: bind
+        source: ~/.pi/agent/auth.json
+        target: /secrets/auth.json
 
 volumes:
   data:
     name: runsc-runtime-binaries
+  picky-home:
+    name: picky-agent-home
+    external: true
