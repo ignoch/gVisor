@@ -1,0 +1,50 @@
+# Run gVisor (runsc) on this Docker Desktop daemon, so containers can opt in
+# with `runtime: runsc` (e.g. to isolate the Pi coding agent).
+#
+#   docker compose run --rm fetch            # download + verify + store in a volume
+#   docker compose run --rm install-into-vm  # copy into the VM and register the runtime
+#
+# Registration lives in the VM's /run (regenerated at every VM boot), so re-run
+# install-into-vm after a Docker Desktop / VM restart. See README.md.
+services:
+  fetch:
+    build: .
+    volumes:
+      - type: volume
+        source: data
+        target: /usr/local/bin
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        if [ -x /usr/local/bin/runsc ]; then
+          echo "runsc already present in volume — skipping fetch (force refresh: docker volume rm runsc-runtime-binaries)"
+          exit 0
+        fi
+        ARCH=$(uname -m)
+        URL=https://storage.googleapis.com/gvisor/releases/release/latest/$${ARCH}
+        wget $${URL}/gvisor.tar.zstd $${URL}/gvisor.tar.zstd.sha512
+        sha512sum -c gvisor.tar.zstd.sha512 && tar --zstd -xf gvisor.tar.zstd -C /usr/local/bin && rm -f gvisor.tar.zstd gvisor.tar.zstd.sha512
+
+  install-into-vm:
+    build: .
+    privileged: true
+    pid: "host"
+    depends_on:
+      fetch:
+        condition: service_completed_successfully
+    volumes:
+      - type: bind
+        source: /
+        target: /host
+      - type: volume
+        source: data
+        target: /bins
+        read_only: true
+    command:
+      - /usr/local/bin/install-into-vm.sh
+
+volumes:
+  data:
+    name: runsc-runtime-binaries
